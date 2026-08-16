@@ -12,6 +12,11 @@ class MarketSnapshot:
     mid: float
     spread: float
 
+    m1_open: float
+    m1_high: float
+    m1_low: float
+    m1_close: float
+
     volume: float | None
 
     timeframe: str
