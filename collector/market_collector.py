@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timedelta
 
 from .market_source import MarketDataSource
-from database.market_repository import MarketRepository
+from database.market_memory_repository import MarketMemoryRepository
 
 
 class MarketCollector:
@@ -10,7 +10,7 @@ class MarketCollector:
     def __init__(
         self,
         source: MarketDataSource,
-        repository: MarketRepository,
+        repository: MarketMemoryRepository,
         interval_seconds: int = 60,
     ):
         self.source = source
@@ -28,7 +28,7 @@ class MarketCollector:
 
         self.validate_snapshot(snapshot)
 
-        self.repository.save_snapshot(snapshot)
+        self.repository.save_observation(snapshot)
 
         self.successful_collections += 1
 

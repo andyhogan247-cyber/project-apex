@@ -14,9 +14,7 @@ class MarketMemoryRepository:
 
     def save_observation(self, snapshot: MarketSnapshot):
 
-        cursor = self.conn.cursor()
-
-        cursor.execute(
+        cursor = self.conn.execute(
             """
             INSERT OR IGNORE INTO market_observations (
                 timestamp,
@@ -54,6 +52,35 @@ class MarketMemoryRepository:
 
         return cursor.rowcount > 0
 
+    def save_snapshot(self, snapshot: MarketSnapshot):
+        """Compatibility alias for the existing collector."""
+        return self.save_observation(snapshot)
+
+    def observation_exists(
+        self,
+        timestamp,
+        symbol="XAUUSD",
+        source="MT4",
+    ):
+
+        cursor = self.conn.execute(
+            """
+            SELECT 1
+            FROM market_observations
+            WHERE timestamp = ?
+            AND symbol = ?
+            AND source = ?
+            LIMIT 1
+            """,
+            (
+                timestamp.isoformat(),
+                symbol,
+                source,
+            ),
+        )
+
+        return cursor.fetchone() is not None
+
     def count_observations(self, symbol="XAUUSD"):
 
         cursor = self.conn.execute(
@@ -67,7 +94,7 @@ class MarketMemoryRepository:
 
         return cursor.fetchone()[0]
 
-    def get_latest(self, symbol="XAUUSD"):
+    def latest_observation(self, symbol="XAUUSD"):
 
         cursor = self.conn.execute(
             """
@@ -82,6 +109,30 @@ class MarketMemoryRepository:
 
         return cursor.fetchone()
 
-    def close(self):
+    def get_range(
+        self,
+        start_time,
+        end_time,
+        symbol="XAUUSD",
+    ):
 
+        cursor = self.conn.execute(
+            """
+            SELECT *
+            FROM market_observations
+            WHERE timestamp >= ?
+            AND timestamp <= ?
+            AND symbol = ?
+            ORDER BY timestamp
+            """,
+            (
+                start_time.isoformat(),
+                end_time.isoformat(),
+                symbol,
+            ),
+        )
+
+        return cursor.fetchall()
+
+    def close(self):
         self.conn.close()

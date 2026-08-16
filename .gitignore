@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# APEX runtime market data
+data/mt4_market.csv
+database/apex.db

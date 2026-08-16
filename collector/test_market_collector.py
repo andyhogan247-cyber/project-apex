@@ -2,7 +2,7 @@ from datetime import datetime
 
 from collector.market_collector import MarketCollector
 from collector.market_snapshot import MarketSnapshot
-from database.market_repository import MarketRepository
+from database.market_memory_repository import MarketMemoryRepository
 
 
 class TestMarketDataSource:
@@ -28,7 +28,7 @@ class TestMarketDataSource:
 
 source = TestMarketDataSource()
 
-repository = MarketRepository()
+repository = MarketMemoryRepository()
 
 collector = MarketCollector(
     source=source,

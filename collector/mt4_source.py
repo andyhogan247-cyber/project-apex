@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import os
 
 from .market_source import MarketDataSource
 from .market_snapshot import MarketSnapshot
@@ -7,8 +8,25 @@ from .market_snapshot import MarketSnapshot
 
 class MT4MarketDataSource(MarketDataSource):
 
-    def __init__(self, data_file="data/mt4_market.csv"):
-        self.data_file = Path(data_file)
+    def __init__(self, data_file=None):
+
+        if data_file:
+            self.data_file = Path(data_file)
+        else:
+            appdata = os.getenv("APPDATA")
+
+            if appdata:
+                self.data_file = (
+                    Path(appdata)
+                    / "MetaQuotes"
+                    / "Terminal"
+                    / "Common"
+                    / "Files"
+                    / "APEX"
+                    / "xauusd_market.csv"
+                )
+            else:
+                self.data_file = Path("data/mt4_market.csv")
 
     def get_snapshot(self) -> MarketSnapshot:
 
@@ -17,30 +35,65 @@ class MT4MarketDataSource(MarketDataSource):
                 f"MT4 market data file not found: {self.data_file}"
             )
 
-        lines = self.data_file.read_text(encoding="utf-8").strip().splitlines()
+        lines = (
+            self.data_file
+            .read_text(encoding="utf-8")
+            .strip()
+            .splitlines()
+        )
 
-        if len(lines) < 2:
-            raise ValueError("MT4 market data file contains no data")
+        if len(lines) < 1:
+            raise ValueError(
+                "MT4 market data file contains no data"
+            )
 
         values = lines[-1].split(",")
 
-        timestamp = datetime.fromisoformat(values[0])
+        if len(values) < 10:
+            raise ValueError(
+                "MT4 market data row contains insufficient fields"
+            )
 
-        bid = float(values[1])
-        ask = float(values[2])
-        volume = float(values[3])
+        timestamp_text = values[0].strip()
+
+        try:
+            timestamp = datetime.strptime(
+                timestamp_text,
+                "%Y.%m.%d %H:%M:%S",
+            )
+        except ValueError:
+
+            timestamp = datetime.fromisoformat(
+                timestamp_text
+            )
+
+        symbol = values[1].strip()
+
+        bid = float(values[2])
+        ask = float(values[3])
+        spread = float(values[4])
+
+        m1_open = float(values[5])
+        m1_high = float(values[6])
+        m1_low = float(values[7])
+        m1_close = float(values[8])
+
+        volume = float(values[9])
 
         mid = (bid + ask) / 2
-        spread = ask - bid
 
         return MarketSnapshot(
             timestamp=timestamp,
-            symbol="XAUUSD",
+            symbol=symbol,
             bid=bid,
             ask=ask,
             mid=mid,
             spread=spread,
+            m1_open=m1_open,
+            m1_high=m1_high,
+            m1_low=m1_low,
+            m1_close=m1_close,
             volume=volume,
             timeframe="M1",
-            source="MT4"
+            source="MT4",
         )
