@@ -79,16 +79,24 @@ class MarketCollector:
             ),
         }
 
-    def start(self):
-        """Continuously collect market data."""
+    def start(self, max_cycles=None):
+        """Continuously collect market data.
+
+        If max_cycles is provided, stop after that many
+        collection attempts. The default is unlimited.
+        """
 
         self.running = True
+        cycles = 0
 
         print("🚀 APEX Market Collector starting...")
         print(
             f"⏱ Collection interval: "
             f"{self.interval_seconds} seconds"
         )
+
+        if max_cycles is not None:
+            print(f"🧪 Maximum test cycles: {max_cycles}")
 
         try:
             while self.running:
@@ -99,6 +107,15 @@ class MarketCollector:
                 except Exception as error:
                     self.failed_collections += 1
                     print(f"❌ Collection error: {error}")
+
+                cycles += 1
+
+                if (
+                    max_cycles is not None
+                    and cycles >= max_cycles
+                ):
+                    print("🧪 Maximum collection cycles reached")
+                    break
 
                 time.sleep(self.interval_seconds)
 
