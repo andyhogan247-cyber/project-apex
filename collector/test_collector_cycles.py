@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from collector.market_collector import MarketCollector
@@ -10,7 +10,10 @@ TEST_FILE = Path("data/test_collector_cycles.csv")
 
 
 def create_test_data():
-    now = datetime.now().replace(microsecond=0)
+    now = (
+    datetime.now(timezone.utc)
+    + timedelta(hours=3)
+).replace(microsecond=0)
 
     row = (
         f"{now.strftime('%Y.%m.%d %H:%M:%S')},"

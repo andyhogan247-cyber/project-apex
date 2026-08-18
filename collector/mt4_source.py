@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import os
 
@@ -8,7 +8,12 @@ from .market_snapshot import MarketSnapshot
 
 class MT4MarketDataSource(MarketDataSource):
 
-    def __init__(self, data_file=None):
+    def __init__(
+        self,
+        data_file=None,
+        server_utc_offset_hours=3,
+    ):
+        self.server_utc_offset_hours = server_utc_offset_hours
 
         if data_file:
             self.data_file = Path(data_file)
@@ -57,15 +62,22 @@ class MT4MarketDataSource(MarketDataSource):
         timestamp_text = values[0].strip()
 
         try:
-            timestamp = datetime.strptime(
+            server_timestamp = datetime.strptime(
                 timestamp_text,
                 "%Y.%m.%d %H:%M:%S",
             )
         except ValueError:
 
-            timestamp = datetime.fromisoformat(
+            server_timestamp = datetime.fromisoformat(
                 timestamp_text
             )
+
+        # MT4 writes broker/server time.
+        # Convert it to UTC before storing it in APEX memory.
+        timestamp = (
+            server_timestamp
+            - timedelta(hours=self.server_utc_offset_hours)
+        )
 
         symbol = values[1].strip()
 

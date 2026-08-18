@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .market_source import MarketDataSource
 from database.market_memory_repository import MarketMemoryRepository
@@ -59,7 +59,7 @@ class MarketCollector:
         if snapshot.spread < 0:
             raise ValueError("Spread cannot be negative")
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         if snapshot.timestamp > now + timedelta(minutes=1):
             raise ValueError("Snapshot timestamp is in the future")

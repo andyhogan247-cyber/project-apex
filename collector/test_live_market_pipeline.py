@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from collector.market_collector import MarketCollector
@@ -10,7 +10,10 @@ TEST_FILE = Path("data/test_mt4_live.csv")
 
 
 def create_fresh_test_data():
-    now = datetime.now().replace(microsecond=0)
+    now = (
+    datetime.now(timezone.utc)
+    + timedelta(hours=3)
+).replace(microsecond=0)
 
     row = (
         f"{now.strftime('%Y.%m.%d %H:%M:%S')},"
@@ -54,20 +57,31 @@ after = repository.count_observations("XAUUSD")
 print(f"Observations after: {after}")
 
 print()
-print("Latest observation:")
+print("Collected observation:")
 
-latest = repository.latest_observation("XAUUSD")
+assert snapshot.source == "MT4"
+assert snapshot.symbol == "XAUUSD"
 
-if latest is None:
-    raise AssertionError(
-        "No market observation found after collection"
-    )
+assert repository.observation_exists(
+    snapshot.timestamp,
+    symbol="XAUUSD",
+    source="MT4",
+)
 
-print(dict(latest))
-
-assert latest["source"] == "MT4"
-assert latest["symbol"] == "XAUUSD"
-
+print(
+    {
+        "timestamp": snapshot.timestamp.isoformat(),
+        "symbol": snapshot.symbol,
+        "bid": snapshot.bid,
+        "ask": snapshot.ask,
+        "m1_open": snapshot.m1_open,
+        "m1_high": snapshot.m1_high,
+        "m1_low": snapshot.m1_low,
+        "m1_close": snapshot.m1_close,
+        "volume": snapshot.volume,
+        "source": snapshot.source,
+    }
+)
 repository.close()
 
 try:

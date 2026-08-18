@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from collector.market_collector import MarketCollector
 from collector.market_snapshot import MarketSnapshot
@@ -10,7 +10,7 @@ class TestMarketDataSource:
     def get_snapshot(self):
 
         return MarketSnapshot(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             symbol="XAUUSD",
             bid=4326.40,
             ask=4326.60,
