@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from database.market_memory_repository import MarketMemoryRepository
+from collector.market_session import MarketSessionManager
 
 
 class MarketHealthMonitor:
@@ -12,12 +13,18 @@ class MarketHealthMonitor:
         source="MT4",
         max_age_seconds=120,
         degraded_age_seconds=60,
+        session_manager=None,
     ):
         self.repository = repository
         self.symbol = symbol
         self.source = source
         self.max_age_seconds = max_age_seconds
         self.degraded_age_seconds = degraded_age_seconds
+        self.session_manager = (
+            session_manager
+            if session_manager is not None
+            else MarketSessionManager()
+        )
 
     def _now_utc(self):
         return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -43,7 +50,7 @@ class MarketHealthMonitor:
 
         return cursor.fetchone()
 
-    def check_freshness(self):
+    def check_freshness(self, now=None):
         latest = self.get_latest()
 
         if latest is None:
@@ -53,12 +60,15 @@ class MarketHealthMonitor:
                 "age_seconds": None,
             }
 
+        if now is None:
+            now = self._now_utc()
+
         timestamp = self._parse_timestamp(
             latest["timestamp"]
         )
 
         age_seconds = (
-            self._now_utc() - timestamp
+            now - timestamp
         ).total_seconds()
 
         if age_seconds < 0:
@@ -273,9 +283,31 @@ class MarketHealthMonitor:
             "count": count,
         }
 
-    def run(self, lookback_minutes=10):
+    def check_session(self, timestamp=None):
+        if timestamp is None:
+            timestamp = self._now_utc()
+
+        status = self.session_manager.get_status(
+            timestamp
+        )
+
+        return {
+            "status": status.state,
+            "trading_allowed": status.trading_allowed,
+            "reason": status.reason,
+        }
+
+    def run(
+        self,
+        lookback_minutes=10,
+        timestamp=None,
+    ):
+        if timestamp is None:
+            timestamp = self._now_utc()
+
         checks = {
-            "freshness": self.check_freshness(),
+            "session": self.check_session(timestamp),
+            "freshness": self.check_freshness(timestamp),
             "latest_values": self.check_latest_values(),
             "minute_continuity": (
                 self.check_minute_continuity(
@@ -288,15 +320,23 @@ class MarketHealthMonitor:
             ),
         }
 
-        statuses = [
+        session_status = checks["session"]["status"]
+
+        data_statuses = [
             result["status"]
-            for result in checks.values()
+            for name, result in checks.items()
+            if name != "session"
         ]
 
-        if "FAILED" in statuses:
+        if "FAILED" in data_statuses:
             overall_status = "FAILED"
-        elif "DEGRADED" in statuses:
+        elif "DEGRADED" in data_statuses:
             overall_status = "DEGRADED"
+        elif session_status in (
+            "MARKET_CLOSED",
+            "SESSION_CLOSED",
+        ):
+            overall_status = session_status
         else:
             overall_status = "HEALTHY"
 
@@ -304,6 +344,6 @@ class MarketHealthMonitor:
             "status": overall_status,
             "symbol": self.symbol,
             "source": self.source,
-            "checked_at": self._now_utc().isoformat(),
+            "checked_at": timestamp.isoformat(),
             "checks": checks,
         }

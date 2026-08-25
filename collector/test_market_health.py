@@ -396,9 +396,12 @@ def test_test_source_is_ignored(conn, repository):
 def test_healthy_overall_status(conn, repository):
     reset_database(conn)
 
-    now = utc_now().replace(
-        second=0,
-        microsecond=0,
+    now = datetime(
+        2026,
+        8,
+        21,
+        10,
+        30,
     )
 
     for minutes_ago in range(11):
@@ -416,15 +419,26 @@ def test_healthy_overall_status(conn, repository):
     )
 
     result = monitor.run(
-        lookback_minutes=10
+        lookback_minutes=10,
+        timestamp=datetime(
+            2026,
+            8,
+            21,
+            10,
+            30,
+        ),
     )
 
     assert result["status"] == "HEALTHY"
 
-    for check in result["checks"].values():
-        assert check["status"] == "HEALTHY"
+    assert result["checks"]["session"]["status"] == "OPEN"
+
+    for name, check in result["checks"].items():
+        if name != "session":
+            assert check["status"] == "HEALTHY"
 
     print("✅ Complete healthy MT4 feed → HEALTHY")
+
 
 
 def main():
