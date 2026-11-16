@@ -37,3 +37,16 @@ that writes to the `signals` table works too).
 
 Files: `desk/gold_prompts.json` (prompts, edit freely), `logs/gold_committee_chat.log`
 (full chats), `database/apex.db`. Never commit `.env` or `apex_listener.session`.
+
+## Research: which Telegram signals actually win? (signal_study)
+Tests whether rules known at signal time (session, trend, how far price already ran, stop size
+vs ATR...) pick the channel's better signals - judged on the last 30% of history against
+random subsets. Needs two exports from you:
+1. Telegram Desktop -> the channel -> ... -> Export chat history -> JSON (text only) -> `result.json`
+2. MT4 -> Tools -> History Center -> XAUUSD -> 1 Minute -> Export -> `XAUUSD1.csv` (same dates)
+```
+py -m research.signal_study --telegram C:\path\result.json --prices C:\path\XAUUSD1.csv
+```
+Writes `research/out/signals.csv` (every signal, its features and result). MT4 times are
+broker server time; the default assumes the usual GMT+2/+3 clock (`--server-tz fixed
+--server-offset 0` if the CSV is already UTC).
