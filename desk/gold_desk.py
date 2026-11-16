@@ -120,41 +120,57 @@ def review_pending(db=None, post=None, now=None):
     return committee(db, post).review(items, context, ts=now)
 
 
-def simulate(signal, bars, spread=0.0):
-    """-> (outcome, R). bars = M1 rows (timestamp, m1_high, m1_low, mid) AFTER the decision."""
-    buy = signal["direction"] == "BUY"
+def simulate(signal, bars, spread=0.0, slip=0.0):
+    """-> (outcome, R). bars = M1 rows (timestamp, m1_high, m1_low, mid) AFTER the decision.
+
+    Trade management as the channel runs it: half the position closes at TP1, the stop on
+    the other half moves to break-even, and that half runs to TP2 (or break-even / time limit).
+      STOP  stopped before TP1                       ~ -1R
+      TP1   half at TP1, other half out at break-even
+      TP2   half at TP1, half at TP2
+      TIME  time limit (open part marked at the last price)
+    `spread` (points) is paid once on entry; `slip` (points) worsens the entry and every stop fill.
+    Same-bar ambiguity is resolved against us (stop first; TP2 only from the bar after TP1)."""
+    d = 1 if signal["direction"] == "BUY" else -1
     top, bottom = max(signal["entry_high"], signal["entry_low"]), min(signal["entry_high"], signal["entry_low"])
-    entry, stop, tp1, tp2 = (top if buy else bottom), signal["stop_loss"], signal["tp1"], signal["tp2"]
-    risk = abs(entry - stop)
-    if not bars or risk <= 0:
+    edge, stop, tp1, tp2 = (top if d > 0 else bottom), signal["stop_loss"], signal["tp1"], signal["tp2"]
+    entry = edge + d * slip
+    risk = d * (entry - stop)
+    if not bars or risk <= 0 or d * (tp1 - entry) <= 0:
         return "OPEN", None
+    if d * (tp2 - tp1) <= 0:          # missing / mistyped TP2: everything closes at TP1
+        tp2 = None
+    cost = spread / risk
+    r_at = lambda px: d * (px - entry) / risk
     t0 = _epoch(bars[0]["timestamp"])
-    filled_at = None
-    for i, b in enumerate(bars):
+    filled_at = half = None
+    for b in bars:
         t = _epoch(b["timestamp"])
+        hi, lo = b["m1_high"], b["m1_low"]
         if filled_at is None:
             if t - t0 > FILL_HOURS * 3600:
                 return "NO_FILL", None
-            if (buy and b["m1_low"] <= top) or (not buy and b["m1_high"] >= bottom):
+            if (d > 0 and lo <= top) or (d < 0 and hi >= bottom):
                 filled_at = t
             else:
                 continue
-        hit_stop = b["m1_low"] <= stop if buy else b["m1_high"] >= stop
-        hit_tp1 = b["m1_high"] >= tp1 if buy else b["m1_low"] <= tp1
-        cost = spread / risk
-        if hit_stop:
-            return "STOP", round(-1 - cost, 3)
-        if hit_tp1:
-            later = bars[i:]
-            for c in later:
-                if (c["m1_low"] <= stop) if buy else (c["m1_high"] >= stop):
-                    break
-                if (c["m1_high"] >= tp2) if buy else (c["m1_low"] <= tp2):
-                    return "TP2", round(abs(tp2 - entry) / risk - cost, 3)
-            return "TP1", round(abs(tp1 - entry) / risk - cost, 3)
-        if t - filled_at > MAX_HOURS * 3600:
-            px = b["mid"]
-            return "TIME", round(((px - entry) if buy else (entry - px)) / risk - cost, 3)
+        if half is None:                                   # full position
+            if (lo <= stop) if d > 0 else (hi >= stop):
+                return "STOP", round(r_at(stop - d * slip) - cost, 3)
+            if (hi >= tp1) if d > 0 else (lo <= tp1):
+                half = 0.5 * r_at(tp1)
+                if tp2 is None:
+                    return "TP1", round(2 * half - cost, 3)
+                continue                                   # second half from the next bar
+            if t - filled_at > MAX_HOURS * 3600:
+                return "TIME", round(r_at(b["mid"]) - cost, 3)
+        else:                                              # half left, stop at break-even
+            if (lo <= entry) if d > 0 else (hi >= entry):
+                return "TP1", round(half + 0.5 * r_at(entry - d * slip) - cost, 3)
+            if (hi >= tp2) if d > 0 else (lo <= tp2):
+                return "TP2", round(half + 0.5 * r_at(tp2) - cost, 3)
+            if t - filled_at > MAX_HOURS * 3600:
+                return "TIME", round(half + 0.5 * r_at(b["mid"]) - cost, 3)
     return "OPEN", None
 
 

@@ -184,7 +184,7 @@ def session(hour):
             else "NY" if hour < 21 else "Late")
 
 
-def study(signals, bars, spread=0.30):
+def study(signals, bars, spread=0.30, slip=0.0):
     import bisect
     times = [b["t"] for b in bars]
     hkeys, h1 = h1_series(bars)
@@ -204,7 +204,7 @@ def study(signals, bars, spread=0.30):
         risk = abs(entry - s["stop_loss"])
         future = [{"timestamp": b["t"].replace(tzinfo=None).isoformat(), "m1_high": b["h"], "m1_low": b["l"],
                    "mid": b["c"]} for b in bars[i:i + 60 * 30]]
-        outcome, r = simulate(s, future, spread)
+        outcome, r = simulate(s, future, spread, slip)
         sign = 1 if buy else -1
         rows.append({
             "time": s["time"].isoformat(timespec="minutes"), "direction": s["direction"],
@@ -302,7 +302,7 @@ def report(rows, misses, n_signals):
         print(f"Messages that looked like signals but did not parse: {len(misses)} - first 5:")
         for m in misses[:5]:
             print("   ", m)
-    print("\nALL SIGNALS (enter at top of zone, exit TP1/TP2 or stop, spread deducted):")
+    print("\nALL SIGNALS (enter at the zone edge; half off at TP1, rest to TP2 with stop at break-even; spread deducted):")
     print("  ", fmt(stats(rows)))
     f = sorted(finished(rows), key=lambda r: r["r"])
     if f:
@@ -349,13 +349,17 @@ def main():
     ap.add_argument("--server-tz", choices=["nyclose", "fixed"], default="nyclose")
     ap.add_argument("--server-offset", type=float, default=0.0, help="hours ahead of UTC when --server-tz fixed")
     ap.add_argument("--spread", type=float, default=0.30)
+    ap.add_argument("--slippage", type=float, default=0.0, help="extra points lost on entry and on stop fills")
     a = ap.parse_args()
     sigs, misses = load_signals(a.telegram, a.html_utc_offset)
     bars = load_prices(a.prices, a.server_tz, a.server_offset)
     print(f"Prices: {len(bars):,} M1 bars {bars[0]['t']:%Y-%m-%d} to {bars[-1]['t']:%Y-%m-%d} (UTC)" if bars
           else "No price rows read - check the CSV format")
-    rows = study(sigs, bars, a.spread)
+    rows = study(sigs, bars, a.spread, a.slippage)
     report(rows, misses, len(sigs))
+    print("\nSLIPPAGE SENSITIVITY (points lost on entry and on stop fills, on top of the spread):")
+    for sl in (0.0, 0.25, 0.5, 1.0):
+        print(f"   {sl:>4} pts: {fmt(stats(study(sigs, bars, a.spread, sl)))}")
     OUT.mkdir(exist_ok=True)
     if rows:
         with open(OUT / "signals.csv", "w", newline="", encoding="utf-8") as f:
