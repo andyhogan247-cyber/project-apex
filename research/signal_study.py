@@ -54,10 +54,9 @@ def parse(text):
     u = text.upper().replace(",", "")
     if not re.search(r"\b(BUY|SELL)\b", u) or not re.search(r"\bSL\b|STOP\s*LOSS", u):
         return None
-    direction = "BUY" if re.search(r"\bBUY\b", u) and not re.search(r"\bSELL\b", u) else (
-        "SELL" if re.search(r"\bSELL\b", u) and not re.search(r"\bBUY\b", u) else None)
-    if not direction:
-        return None
+    # the signal's own direction is the FIRST buy/sell word ("SELL @ ... LEAVE YOUR BUY RUNNING")
+    first = re.search(r"\b(BUY|SELL)\b", u)
+    direction = first.group(1)
     zone = (re.search(rf"@\s*{NUM}\s*[/\-]\s*{NUM}", u) or re.search(rf"(?:BUY|SELL)[^\d\n]*{NUM}\s*[/\-]\s*{NUM}", u))
     if zone:
         a, b = float(zone.group(1)), float(zone.group(2))
@@ -73,9 +72,10 @@ def parse(text):
     s = {"direction": direction, "entry_high": max(a, b), "entry_low": min(a, b),
          "stop_loss": float(sl.group(1)), "tp1": tps[0], "tp2": tps[1] if len(tps) > 1 else tps[0]}
     # sanity: stop and target on the right sides of the zone
-    if direction == "BUY" and not (s["stop_loss"] < s["entry_low"] and s["tp1"] > s["entry_high"]):
+    # (the channel sometimes puts the stop inside the zone; the desk enters at the zone's edge)
+    if direction == "BUY" and not (s["stop_loss"] < s["entry_high"] and s["tp1"] > s["entry_high"]):
         return None
-    if direction == "SELL" and not (s["stop_loss"] > s["entry_high"] and s["tp1"] < s["entry_low"]):
+    if direction == "SELL" and not (s["stop_loss"] > s["entry_low"] and s["tp1"] < s["entry_low"]):
         return None
     return s
 
@@ -304,6 +304,25 @@ def report(rows, misses, n_signals):
             print("   ", m)
     print("\nALL SIGNALS (enter at top of zone, exit TP1/TP2 or stop, spread deducted):")
     print("  ", fmt(stats(rows)))
+    f = sorted(finished(rows), key=lambda r: r["r"])
+    if f:
+        oc = {}
+        for r in f:
+            oc[r["outcome"]] = oc.get(r["outcome"], 0) + 1
+        rs = [r["r"] for r in f]
+        print(f"   outcomes: {', '.join(f'{k} {v}' for k, v in sorted(oc.items()))}   median {statistics.median(rs):+.2f}R")
+        if len(f) > 10:
+            trimmed = rs[5:-5]
+            print(f"   without the 5 best and 5 worst: avg {statistics.mean(trimmed):+.2f}R over {len(trimmed)}")
+        print("   largest results (check these are real):")
+        for r in f[-5:][::-1] + f[:3]:
+            print(f"     {r['time']} {r['direction']:4} entry {r['entry']} stop {r['stop']} tp1 {r['tp1']} -> "
+                  f"{r['outcome']} {r['r']:+.2f}R")
+        weeks = {}
+        for r in f:
+            wk = datetime.fromisoformat(r["time"]).strftime("%G-W%V")
+            weeks[wk] = weeks.get(wk, 0) + r["r"]
+        print("   by week (R): " + "  ".join(f"{k[-3:]}:{v:+.1f}" for k, v in sorted(weeks.items())))
     for name, fn in RULES.items():
         print(f"\nBy {name}:")
         for val in sorted({fn(r) for r in finished(rows)}):

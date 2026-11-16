@@ -12,6 +12,11 @@ def test_tolerant_parser():
     assert p["direction"] == "SELL" and p["entry_low"] == 2701 and p["tp1"] == 2695
     assert ss.parse("Great week! +500 pips BUY BUY BUY") is None
     assert ss.parse("BUY @ 2650/2647 SL 2660 TP 2655") is None, "stop on the wrong side -> rejected"
+    p = ss.parse("SELL @ 3309/3313\n\nTP 3307\nTP 3303\nTP 3298\nSL 3314\n\nYOU CAN LEAVE YOUR BUY POSITION WITH SL AT BE")
+    assert p["direction"] == "SELL" and p["entry_low"] == 3309
+    p = ss.parse("BUY @ 3324/3321\n\nTP 3326\nTP 3330\nTP 3335\nTP OPEN\nSL 3322")
+    assert p["direction"] == "BUY" and p["stop_loss"] == 3322, "stop inside the zone is the channel's style"
+    assert ss.parse("Adjust first buy SL to 3329 if you're still on") is None
 
 
 def make_world(n_days=60):
