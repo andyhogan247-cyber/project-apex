@@ -42,7 +42,8 @@ Files: `desk/gold_prompts.json` (prompts, edit freely), `logs/gold_committee_cha
 Tests whether rules known at signal time (session, trend, how far price already ran, stop size
 vs ATR...) pick the channel's better signals - judged on the last 30% of history against
 random subsets. Needs two exports from you:
-1. Telegram Desktop -> the channel -> ... -> Export chat history -> JSON (text only) -> `result.json`
+1. Telegram Desktop -> the channel -> ... -> Export chat history (JSON `result.json`, or the HTML
+   export folder - both work)
 2. MT4 -> Tools -> History Center -> XAUUSD -> 1 Minute -> Export -> `XAUUSD1.csv` (same dates)
 ```
 py -m research.signal_study --telegram C:\path\result.json --prices C:\path\XAUUSD1.csv

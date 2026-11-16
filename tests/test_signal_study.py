@@ -64,3 +64,19 @@ def test_mt4_csv_and_server_clock(tmp_path):
     summer.write_text("2026.07.06,10:00,1,1,1,1,1\n")
     assert ss.load_prices(summer)[0]["t"].hour == 7, "GMT+3 while US summer time is on"
     assert ss.load_prices(p, "fixed", 0)[0]["t"].hour == 10
+
+
+def test_html_export(tmp_path):
+    page = """<div class="message service" id="message-1"><div class="body details">16 November 2026</div></div>
+<div class="message default clearfix" id="message2"><div class="body">
+<div class="pull_right date details" title="16.11.2026 09:15:00 UTC+01:00">09:15</div>
+<div class="from_name">Gold VIP</div>
+<div class="text">XAUUSD BUY @ 2650/2647<br>SL 2640<br>TP 2655<br>TP 2660</div></div></div>
+<div class="message default clearfix joined" id="message3"><div class="body">
+<div class="pull_right date details" title="16.11.2026 10:00:00 UTC+01:00">10:00</div>
+<div class="text">TP1 hit &#43;50 pips &amp; running</div></div></div>"""
+    (tmp_path / "messages.html").write_text(page, encoding="utf-8")
+    (tmp_path / "messages2.html").write_text(page.replace("09:15:00", "11:15:00"), encoding="utf-8")
+    sigs, misses = ss.load_signals(tmp_path)
+    assert len(sigs) == 2 and sigs[0]["time"] == datetime(2026, 11, 16, 8, 15, tzinfo=timezone.utc)
+    assert sigs[0]["stop_loss"] == 2640 and sigs[1]["time"].hour == 10

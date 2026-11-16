@@ -80,10 +80,41 @@ def parse(text):
     return s
 
 
-def load_signals(path):
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+HTML_MSG = re.compile(r'<div class="message default[^"]*"(.*?)(?=<div class="message (?:default|service)|\Z)', re.S)
+HTML_DATE = re.compile(r'class="pull_right date details" title="(\d\d)\.(\d\d)\.(\d{4}) (\d\d):(\d\d):(\d\d)'
+                       r'(?: UTC([+-]\d\d):(\d\d))?"')
+HTML_TEXT = re.compile(r'<div class="text">(.*?)</div>', re.S)
+
+
+def html_messages(path, utc_offset_hours=0.0):
+    """Telegram Desktop HTML export (messages.html, messages2.html, ...) -> JSON-export-like dicts."""
+    import html as _html
+    p = Path(path)
+    files = sorted(p.glob("messages*.html"), key=lambda f: int(re.sub(r"\D", "", f.stem) or 1)) if p.is_dir() else [p]
+    out = []
+    for f in files:
+        for block in HTML_MSG.findall(f.read_text(encoding="utf-8")):
+            d, t = HTML_DATE.search(block), HTML_TEXT.search(block)
+            if not d or not t:
+                continue
+            dd, mm, yy, hh, mi, ss_, oh, om = d.groups()
+            off = (int(oh) + (1 if int(oh) >= 0 else -1) * int(om) / 60) if oh else utc_offset_hours
+            when = datetime(int(yy), int(mm), int(dd), int(hh), int(mi), int(ss_), tzinfo=timezone.utc) - timedelta(hours=off)
+            text = re.sub(r"<br\s*/?>", "\n", t.group(1))
+            text = _html.unescape(re.sub(r"<[^>]+>", "", text)).strip()
+            out.append({"type": "message", "date_unixtime": str(int(when.timestamp())), "text": text, "id": len(out)})
+    return out
+
+
+def load_signals(path, html_utc_offset=0.0):
+    """JSON export (result.json) or HTML export (messages*.html file or its folder)."""
+    p = Path(path)
+    if p.is_dir() or p.suffix.lower() in (".html", ".htm"):
+        msgs = html_messages(p, html_utc_offset)
+    else:
+        msgs = json.loads(p.read_text(encoding="utf-8")).get("messages", [])
     sigs, misses = [], []
-    for m in data.get("messages", []):
+    for m in msgs:
         if m.get("type") != "message":
             continue
         text = message_text(m)
@@ -292,13 +323,15 @@ def report(rows, misses, n_signals):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--telegram", required=True)
+    ap.add_argument("--telegram", required=True, help="result.json, or the HTML export folder / messages.html")
+    ap.add_argument("--html-utc-offset", type=float, default=0.0,
+                    help="only for old HTML exports without 'UTC+hh:mm' in the date: your PC's UTC offset then")
     ap.add_argument("--prices", required=True)
     ap.add_argument("--server-tz", choices=["nyclose", "fixed"], default="nyclose")
     ap.add_argument("--server-offset", type=float, default=0.0, help="hours ahead of UTC when --server-tz fixed")
     ap.add_argument("--spread", type=float, default=0.30)
     a = ap.parse_args()
-    sigs, misses = load_signals(a.telegram)
+    sigs, misses = load_signals(a.telegram, a.html_utc_offset)
     bars = load_prices(a.prices, a.server_tz, a.server_offset)
     print(f"Prices: {len(bars):,} M1 bars {bars[0]['t']:%Y-%m-%d} to {bars[-1]['t']:%Y-%m-%d} (UTC)" if bars
           else "No price rows read - check the CSV format")
